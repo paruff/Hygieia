@@ -2,7 +2,6 @@ package jenkins.plugins.hygieia.workflow;
 
 import com.capitalone.dashboard.model.BuildStatus;
 import hudson.Extension;
-import hudson.model.Result;
 import hudson.model.Run;
 import hudson.model.TaskListener;
 import hudson.util.ListBoxModel;
@@ -12,6 +11,7 @@ import jenkins.plugins.hygieia.DefaultHygieiaService;
 import jenkins.plugins.hygieia.HygieiaPublisher;
 import jenkins.plugins.hygieia.HygieiaResponse;
 import jenkins.plugins.hygieia.HygieiaService;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.httpclient.HttpStatus;
 import org.jenkinsci.plugins.workflow.steps.AbstractStepDescriptorImpl;
 import org.jenkinsci.plugins.workflow.steps.AbstractStepImpl;
@@ -22,106 +22,117 @@ import org.kohsuke.stapler.DataBoundSetter;
 
 import javax.annotation.Nonnull;
 import javax.inject.Inject;
-
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public class HygieiaBuildPublishStep extends AbstractStepImpl {
 
+	private String buildStatus;
 
-    private String buildStatus;
+	public String getBuildStatus() {
+		return buildStatus;
+	}
 
-    public String getBuildStatus() {
-        return buildStatus;
-    }
+	@DataBoundSetter
+	public void setBuildStatus(String buildStatus) {
+		this.buildStatus = buildStatus;
+	}
 
-    @DataBoundSetter
-    public void setBuildStatus(String buildStatus) {
-        this.buildStatus = buildStatus;
-    }
+	@DataBoundConstructor
+	public HygieiaBuildPublishStep(@Nonnull String buildStatus) {
+		this.buildStatus = buildStatus;
+	}
 
-    @DataBoundConstructor
-    public HygieiaBuildPublishStep(@Nonnull String buildStatus) {
-        this.buildStatus = buildStatus;
-    }
+	@Extension
+	public static class DescriptorImpl extends AbstractStepDescriptorImpl {
 
+		public DescriptorImpl() {
+			super(HygieiaBuildPublishStepExecution.class);
+		}
 
-    @Extension
-    public static class DescriptorImpl extends AbstractStepDescriptorImpl {
+		@Override
+		public String getFunctionName() {
+			return "hygieiaBuildPublishStep";
+		}
 
-        public DescriptorImpl() {
-            super(HygieiaBuildPublishStepExecution.class);
-        }
+		@Override
+		public String getDisplayName() {
+			return "Hygieia Build Publish Step";
+		}
 
-        @Override
-        public String getFunctionName() {
-            return "hygieiaBuildPublishStep";
-        }
+		public ListBoxModel doFillBuildStatusItems() {
+			ListBoxModel model = new ListBoxModel();
+			model.add("Success", BuildStatus.Success.toString());
+			model.add("Failure", BuildStatus.Failure.toString());
+			model.add("Unstable", BuildStatus.Unstable.toString());
+			model.add("Aborted", BuildStatus.Aborted.toString());
+			return model;
+		}
+	}
 
-        @Override
-        public String getDisplayName() {
-            return "Hygieia Build Publish Step";
-        }
+	public static class HygieiaBuildPublishStepExecution
+			extends AbstractSynchronousNonBlockingStepExecution<List<Integer>> {
 
+		private static final long serialVersionUID = 1L;
 
-        public ListBoxModel doFillBuildStatusItems() {
-            ListBoxModel model = new ListBoxModel();
+		@Inject
+		transient HygieiaBuildPublishStep step;
 
-            model.add("Started", "InProgress");
-            model.add("Success", BuildStatus.Success.toString());
-            model.add("Failure", BuildStatus.Failure.toString());
-            model.add("Unstable", BuildStatus.Unstable.toString());
-            model.add("Aborted", BuildStatus.Aborted.toString());
-            return model;
-        }
+		@StepContextParameter
+		transient TaskListener listener;
 
-    }
+		@StepContextParameter
+		transient Run run;
 
-    public static class HygieiaBuildPublishStepExecution extends AbstractSynchronousNonBlockingStepExecution<Integer> {
+		// This run MUST return a non-Void object, otherwise it will be executed
+		// three times!!!! No idea why
+		@Override
+		protected List<Integer> run() {
 
-        private static final long serialVersionUID = 1L;
+			// default to global config values if not set in step, but allow
+			// step to override all global settings
 
-        @Inject
-        transient HygieiaBuildPublishStep step;
+			Jenkins jenkins;
+			try {
+				jenkins = Jenkins.getInstance();
+			} catch (NullPointerException ne) {
+				listener.error(ne.toString());
+				return null;
+			}
+			HygieiaPublisher.DescriptorImpl hygieiaDesc = jenkins
+					.getDescriptorByType(HygieiaPublisher.DescriptorImpl.class);
 
-        @StepContextParameter
-        transient TaskListener listener;
+			// Skip the publish if publish is enabled in global preferences.
+			boolean skipPublish = hygieiaDesc.isHygieiaPublishBuildDataGlobal()
+					|| hygieiaDesc.isHygieiaPublishSonarDataGlobal()
+					|| CollectionUtils.isNotEmpty(hygieiaDesc.getHygieiaPublishGenericCollectorItems());
 
-        @StepContextParameter
-        transient Run run;
+			if(skipPublish) { return new ArrayList<>();}
 
-        // This run MUST return a non-Void object, otherwise it will be executed three times!!!! No idea why
-        @Override
-        protected Integer run() throws Exception {
-
-            //default to global config values if not set in step, but allow step to override all global settings
-
-            Jenkins jenkins;
-            try {
-                jenkins = Jenkins.getInstance();
-            } catch (NullPointerException ne) {
-                listener.error(ne.toString());
-                return -1;
-            }
-
-            HygieiaPublisher.DescriptorImpl hygieiaDesc = jenkins.getDescriptorByType(HygieiaPublisher.DescriptorImpl.class);
-            HygieiaService hygieiaService = getHygieiaService(hygieiaDesc.getHygieiaAPIUrl(), hygieiaDesc.getHygieiaToken(),
-                    hygieiaDesc.getHygieiaJenkinsName(), hygieiaDesc.isUseProxy());
-            BuildBuilder builder = new BuildBuilder(run, hygieiaDesc.getHygieiaJenkinsName(), listener, BuildStatus.fromString(step.buildStatus), true);
-            HygieiaResponse buildResponse = hygieiaService.publishBuildData(builder.getBuildData());
-            if (buildResponse.getResponseCode() == HttpStatus.SC_CREATED) {
-                listener.getLogger().println("Hygieia: Published Build Complete Data. " + buildResponse.toString());
-            } else {
-                listener.getLogger().println("Hygieia: Failed Publishing Build Complete Data. " + buildResponse.toString());
-            }
-
-            return buildResponse.getResponseCode();
-        }
-
-
-        //streamline unit testing
-        HygieiaService getHygieiaService(String hygieiaAPIUrl, String hygieiaToken, String hygieiaJenkinsName, boolean useProxy) {
-            return new DefaultHygieiaService(hygieiaAPIUrl, hygieiaToken, hygieiaJenkinsName, useProxy);
-        }
-    }
-
-
+			List<String> hygieiaAPIUrls = Arrays.asList(hygieiaDesc.getHygieiaAPIUrl().split(";"));
+			List<Integer> responseCodes = new ArrayList<>();
+			for (String hygieiaAPIUrl : hygieiaAPIUrls) {
+				this.listener.getLogger().println("Publishing data for API " + hygieiaAPIUrl.toString());
+				HygieiaService hygieiaService = getHygieiaService(hygieiaAPIUrl, hygieiaDesc.getHygieiaToken(),
+						hygieiaDesc.getHygieiaJenkinsName(), hygieiaDesc.isUseProxy());
+				HygieiaResponse buildResponse = hygieiaService.publishBuildData(new BuildBuilder().createBuildRequestFromRun(run, hygieiaDesc.getHygieiaJenkinsName(), listener,
+						BuildStatus.fromString(step.buildStatus), true));
+				if (buildResponse.getResponseCode() == HttpStatus.SC_CREATED) {
+					listener.getLogger().println("Hygieia: Published Build Complete Data. " + buildResponse.toString());
+				} else {
+					listener.getLogger()
+							.println("Hygieia: Failed Publishing Build Complete Data. " + buildResponse.toString());
+				}
+				responseCodes.add(Integer.valueOf(buildResponse.getResponseCode()));
+			}
+			return responseCodes;
+		}
+		
+		// streamline unit testing
+		HygieiaService getHygieiaService(String hygieiaAPIUrl, String hygieiaToken, String hygieiaJenkinsName,
+				boolean useProxy) {
+			return new DefaultHygieiaService(hygieiaAPIUrl, hygieiaToken, hygieiaJenkinsName, useProxy);
+		}
+	}
 }

@@ -1,7 +1,13 @@
 package com.capitalone.dashboard.service;
 
 import com.capitalone.dashboard.misc.HygieiaException;
-import com.capitalone.dashboard.model.*;
+import com.capitalone.dashboard.model.Collector;
+import com.capitalone.dashboard.model.CollectorItem;
+import com.capitalone.dashboard.model.CollectorType;
+import com.capitalone.dashboard.model.Component;
+import com.capitalone.dashboard.model.DataResponse;
+import com.capitalone.dashboard.model.QTestResult;
+import com.capitalone.dashboard.model.TestResult;
 import com.capitalone.dashboard.repository.CollectorRepository;
 import com.capitalone.dashboard.repository.ComponentRepository;
 import com.capitalone.dashboard.repository.TestResultRepository;
@@ -12,7 +18,6 @@ import com.capitalone.dashboard.request.TestResultRequest;
 import com.google.common.collect.Lists;
 import com.mysema.query.BooleanBuilder;
 import org.apache.commons.lang.StringUtils;
-import org.bouncycastle.util.test.Test;
 import org.bson.types.ObjectId;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
@@ -47,7 +52,8 @@ public class TestResultServiceImpl implements TestResultService {
     @Override
     public DataResponse<Iterable<TestResult>> search(TestResultRequest request) {
         Component component = componentRepository.findOne(request.getComponentId());
-        if (!component.getCollectorItems().containsKey(CollectorType.Test)) {
+
+        if ((component == null) || !component.getCollectorItems().containsKey(CollectorType.Test)) {
             return new DataResponse<>(null, 0L);
         }
         List<TestResult> result = new ArrayList<>();
@@ -66,23 +72,17 @@ public class TestResultServiceImpl implements TestResultService {
 
 
     private void validateAllCollectorItems(TestResultRequest request, Component component, List<TestResult> result) {
-        for (CollectorItem item : component.getCollectorItems().get(CollectorType.Test)) {
-
+        // add all test result repos
+        component.getCollectorItems().get(CollectorType.Test).forEach(item -> {
             QTestResult testResult = new QTestResult("testResult");
             BooleanBuilder builder = new BooleanBuilder();
-
             builder.and(testResult.collectorItemId.eq(item.getId()));
-
             validateStartDateRange(request, testResult, builder);
             validateEndDateRange(request, testResult, builder);
-
             validateDurationRange(request, testResult, builder);
-
             validateTestCapabilities(request, testResult, builder);
-
-            // add all test result repos
             addAllTestResultRepositories(request, result, testResult, builder);
-        }
+        });
     }
 
     private void addAllTestResultRepositories(TestResultRequest request, List<TestResult> result, QTestResult testResult, BooleanBuilder builder) {
@@ -129,37 +129,37 @@ public class TestResultServiceImpl implements TestResultService {
         if (depth == null || depth > 3) {
             return results;
         }
-        for (TestResult result : results) {
+        results.forEach(result -> {
             if (depth == 0) {
                 result.getTestCapabilities().clear();
             } else {
-                for (TestCapability testCapability : result.getTestCapabilities()) {
+                result.getTestCapabilities().forEach(testCapability -> {
                     if (depth == 1) {
                         testCapability.getTestSuites().clear();
                     } else {
-                        for (TestSuite testSuite : testCapability.getTestSuites()) {
+                        testCapability.getTestSuites().forEach(testSuite -> {
                             if (depth == 2) {
                                 testSuite.getTestCases().clear();
                             } else { // depth == 3
-                                for (TestCase testCase : testSuite.getTestCases()) {
+                                testSuite.getTestCases().forEach(testCase -> {
                                     testCase.getTestSteps().clear();
-                                }
+                                });
                             }
-                        }
+                        });
                     }
-                }
+                });
             }
-        }
+        });
 
         return results;
     }
 
-    @Override
-    public String create(TestDataCreateRequest request) throws HygieiaException {
-        /**
-         * Step 1: create Collector if not there
-         * Step 2: create Collector item if not there
-         * Step 3: Insert test data if new. If existing, update it
+
+    protected TestResult createTest(TestDataCreateRequest request) throws HygieiaException {
+        /*
+          Step 1: create Collector if not there
+          Step 2: create Collector item if not there
+          Step 3: Insert test data if new. If existing, update it
          */
         Collector collector = createCollector();
 
@@ -181,21 +181,35 @@ public class TestResultServiceImpl implements TestResultService {
             throw new HygieiaException("Failed inserting/updating Test information.", HygieiaException.ERROR_INSERTING_DATA);
         }
 
-        return testResult.getId().toString();
+        return testResult;
 
     }
 
-    public String createPerf(PerfTestDataCreateRequest request) throws HygieiaException {
+    @Override
+    public String create(TestDataCreateRequest request) throws HygieiaException {
+        TestResult testResult = createTest(request);
+        return testResult.getId().toString();
+    }
+
+    @Override
+    public String createV2(TestDataCreateRequest request) throws HygieiaException {
+        TestResult testResult = createTest(request);
+        return testResult.getId().toString() + "," + testResult.getCollectorItemId().toString();
+    }
+
+
+
+    protected TestResult createPerfTest(PerfTestDataCreateRequest request) throws HygieiaException {
         /**
          * Step 1: create performance Collector if not there
          * Step 2: create Perfomance Collector item if not there
          * Step 3: Insert performance test data if new. If existing, update it
          */
-        Collector collector = createCollector();
+        Collector collector = createGenericCollector(request.getPerfTool());
         if (collector == null) {
             throw new HygieiaException("Failed creating Test collector.", HygieiaException.COLLECTOR_CREATE_ERROR);
         }
-        CollectorItem collectorItem = createPerfCollectorItem(collector, request);
+        CollectorItem collectorItem = createGenericCollectorItem(collector, request);
         if (collectorItem == null) {
             throw new HygieiaException("Failed creating Test collector item.", HygieiaException.COLLECTOR_ITEM_CREATE_ERROR);
         }
@@ -203,8 +217,20 @@ public class TestResultServiceImpl implements TestResultService {
         if (testResult == null) {
             throw new HygieiaException("Failed inserting/updating Test information.", HygieiaException.ERROR_INSERTING_DATA);
         }
-        return testResult.getId().toString();
+        return testResult;
 
+    }
+
+    @Override
+    public String createPerf(PerfTestDataCreateRequest request) throws HygieiaException {
+        TestResult testResult = createPerfTest(request);
+        return testResult.getId().toString();
+    }
+
+    @Override
+    public String createPerfV2(PerfTestDataCreateRequest request) throws HygieiaException {
+        TestResult testResult = createPerfTest(request);
+        return testResult.getId().toString() + "," + testResult.getCollectorItemId().toString();
     }
 
     private Collector createCollector() {
@@ -228,6 +254,23 @@ public class TestResultServiceImpl implements TestResultService {
         return collectorService.createCollector(col);
     }
 
+
+    private Collector createGenericCollector(String performanceTool) {
+        CollectorRequest collectorReq = new CollectorRequest();
+        collectorReq.setName(performanceTool);
+        collectorReq.setCollectorType(CollectorType.Test);
+        Collector col = collectorReq.toCollector();
+        col.setEnabled(true);
+        col.setOnline(true);
+        col.setLastExecuted(System.currentTimeMillis());
+        Map<String, Object> allOptions = new HashMap<>();
+        allOptions.put("jobName","");
+        allOptions.put("instanceUrl", "");
+        col.setAllFields(allOptions);
+        col.setUniqueFields(allOptions);
+        return collectorService.createCollector(col);
+    }
+
     private CollectorItem createCollectorItem(Collector collector, TestDataCreateRequest request) throws HygieiaException {
         CollectorItem tempCi = new CollectorItem();
         tempCi.setCollectorId(collector.getId());
@@ -247,7 +290,7 @@ public class TestResultServiceImpl implements TestResultService {
     }
 
 
-    private CollectorItem createPerfCollectorItem(Collector collector, PerfTestDataCreateRequest request) throws HygieiaException {
+    private CollectorItem createGenericCollectorItem(Collector collector, PerfTestDataCreateRequest request) {
         CollectorItem tempCi = new CollectorItem();
         tempCi.setCollectorId(collector.getId());
         tempCi.setDescription(request.getPerfTool()+" : "+request.getTestName());
@@ -255,13 +298,9 @@ public class TestResultServiceImpl implements TestResultService {
         tempCi.setLastUpdated(System.currentTimeMillis());
         Map<String, Object> option = new HashMap<>();
         option.put("jobName", request.getTestName());
-        option.put("jobUrl", request.getReportUrl());
-        option.put("instanceUrl", request.getPerfTool());
+        option.put("instanceUrl", request.getInstanceUrl());
         tempCi.getOptions().putAll(option);
         tempCi.setNiceName(request.getPerfTool());
-        if (StringUtils.isEmpty(tempCi.getNiceName())) {
-            return collectorService.createCollectorItem(tempCi);
-        }
         return collectorService.createCollectorItem(tempCi);
     }
 
@@ -319,6 +358,7 @@ public class TestResultServiceImpl implements TestResultService {
         testResult.setUrl(request.getReportUrl());
         testResult.getTestCapabilities().addAll(request.getTestCapabilities());
         testResult.setDescription(request.getDescription());
+        testResult.setResultStatus(request.getResultStatus());
         return testResultRepository.save(testResult);
     }
 

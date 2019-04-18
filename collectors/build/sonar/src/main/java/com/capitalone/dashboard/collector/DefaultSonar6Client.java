@@ -114,7 +114,11 @@ public class DefaultSonar6Client implements SonarClient {
     }
 
     private JSONArray getProjects(String url, String key, int pages, JSONArray jsonArray) throws ParseException {
-       for (int start=1;start<=pages;start++){
+        int maxPages = 20;
+        if(pages <= maxPages) {
+            maxPages = pages;
+        }
+       for (int start=1;start<=maxPages;start++){
             getProjects(url, key, jsonArray, start);
         }
         return  jsonArray;
@@ -148,16 +152,7 @@ public class DefaultSonar6Client implements SonarClient {
                         project.getInstanceUrl() + URL_PROJECT_ANALYSES, str(prjData, KEY));
                 key = "analyses";
                 JSONArray jsonArray = parseAsArray(url, key);
-                JSONObject prjLatestData = (JSONObject) jsonArray.get(0);
-                codeQuality.setTimestamp(timestamp(prjLatestData, DATE));
-                for (Object eventObj : (JSONArray) prjLatestData.get(EVENTS)) {
-                    JSONObject eventJson = (JSONObject) eventObj;
-
-                    if (strSafe(eventJson, "category").equals("VERSION")) {
-                        codeQuality.setVersion(str(eventJson, NAME));
-                    }
-                }
-
+                getProjectAnalysis(codeQuality, jsonArray);
                 for (Object metricObj : (JSONArray) prjData.get(MSR)) {
                     JSONObject metricJson = (JSONObject) metricObj;
 
@@ -186,7 +181,21 @@ public class DefaultSonar6Client implements SonarClient {
 
         return null;
     }
-    
+
+    private void getProjectAnalysis(CodeQuality codeQuality, JSONArray jsonArray) {
+        if(jsonArray!=null && !jsonArray.isEmpty()) {
+            JSONObject prjLatestData = (JSONObject) jsonArray.get(0);
+            codeQuality.setTimestamp(timestamp(prjLatestData, DATE));
+            for (Object eventObj : (JSONArray) prjLatestData.get(EVENTS)) {
+                JSONObject eventJson = (JSONObject) eventObj;
+
+                if (strSafe(eventJson, "category").equals("VERSION")) {
+                    codeQuality.setVersion(str(eventJson, NAME));
+                }
+            }
+        }
+    }
+
     public List<String> retrieveProfileAndProjectAssociation(String instanceUrl,String qualityProfile) throws ParseException{
     	List<String> projects = new ArrayList<>();
     	String url = instanceUrl + URL_QUALITY_PROFILE_PROJECT_DETAILS + qualityProfile;
@@ -359,9 +368,8 @@ public class DefaultSonar6Client implements SonarClient {
 
     private HttpHeaders createHeaders(String username, String password){
         HttpHeaders headers = new HttpHeaders();
-        if (username != null && !username.isEmpty() &&
-                password != null && !password.isEmpty()) {
-            String auth = username + ":" + password;
+        if (username != null && !username.isEmpty()) {
+            String auth = username + ":" + (password == null ? "" : password);
             byte[] encodedAuth = Base64.encodeBase64(
                     auth.getBytes(Charset.forName("US-ASCII"))
             );

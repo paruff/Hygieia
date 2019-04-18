@@ -1,5 +1,6 @@
 package com.capitalone.dashboard.service;
 
+import com.capitalone.dashboard.ApiSettings;
 import com.capitalone.dashboard.common.TestUtils;
 import com.capitalone.dashboard.config.FongoConfig;
 import com.capitalone.dashboard.config.TestConfig;
@@ -14,6 +15,7 @@ import com.capitalone.dashboard.model.Commit;
 import com.capitalone.dashboard.model.DashboardType;
 import com.capitalone.dashboard.model.GitRequest;
 import com.capitalone.dashboard.model.Review;
+import com.capitalone.dashboard.repository.BinaryArtifactRepository;
 import com.capitalone.dashboard.repository.CodeQualityRepository;
 import com.capitalone.dashboard.repository.CollectorItemRepository;
 import com.capitalone.dashboard.repository.CollectorRepository;
@@ -22,11 +24,17 @@ import com.capitalone.dashboard.repository.ComponentRepository;
 import com.capitalone.dashboard.repository.DashboardRepository;
 import com.capitalone.dashboard.repository.GitRequestRepository;
 import com.capitalone.dashboard.repository.LibraryPolicyResultsRepository;
+import com.capitalone.dashboard.repository.TestResultRepository;
+import com.capitalone.dashboard.repository.FeatureRepository;
+import com.capitalone.dashboard.response.ArtifactAuditResponse;
 import com.capitalone.dashboard.response.AuditReviewResponse;
 import com.capitalone.dashboard.response.CodeReviewAuditResponse;
 import com.capitalone.dashboard.response.DashboardReviewResponse;
 import com.capitalone.dashboard.response.LibraryPolicyAuditResponse;
 import com.capitalone.dashboard.response.SecurityReviewAuditResponse;
+import com.capitalone.dashboard.response.PerformanceTestAuditResponse;
+import com.capitalone.dashboard.response.CodeQualityAuditResponse;
+import com.capitalone.dashboard.response.TestResultsAuditResponse;
 import com.capitalone.dashboard.testutil.GsonUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -39,6 +47,7 @@ import com.google.gson.reflect.TypeToken;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.IOUtils;
 import org.bson.types.ObjectId;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -53,6 +62,7 @@ import java.net.URL;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.IntStream;
@@ -94,6 +104,18 @@ public class DashboardAuditServiceTest {
     @Autowired
     private LibraryPolicyResultsRepository libraryPolicyResultsRepository;
 
+    @Autowired
+    private TestResultRepository testResultsRepository;
+
+    @Autowired
+    private FeatureRepository featureRepository;
+
+    @Autowired
+    private BinaryArtifactRepository binaryArtifactRepository;
+
+    @Autowired
+    private ApiSettings apiSettings;
+
 
     @Before
     public void loadStuff() throws IOException {
@@ -104,37 +126,47 @@ public class DashboardAuditServiceTest {
         TestUtils.loadCollector(collectorRepository);
         TestUtils.loadPullRequests(gitRequestRepository);
         TestUtils.loadSSCRequests(codeQualityRepository);
-        TestUtils.loadLibraryPolicy(libraryPolicyResultsRepository);
+        TestUtils.loadTestResults(testResultsRepository);
+        TestUtils.loadCodeQuality(codeQualityRepository);
+        TestUtils.loadFeature(featureRepository);
+        TestUtils.loadArtifacts(binaryArtifactRepository);
+        apiSettings.setServiceAccountRegEx("/./g");
     }
 
     @Test
     public void runStaticSecurityAuditTests() throws AuditException, IOException {
         DashboardReviewResponse actual = getActualReviewResponse(dashboardAuditService.getDashboardReviewResponse(
-                        "TestSSA",
-                        DashboardType.Team,
-                        "TestBusServ",
-                        "confItem", 1519728000000L, 1523180525854L,
-                        Sets.newHashSet(AuditType.STATIC_SECURITY_ANALYSIS)), SecurityReviewAuditResponse.class);
+                "TestSSA",
+                DashboardType.Team,
+                "TestBusServ",
+                "confItem", 1519728000000L, 1523180525854L,
+                Sets.newHashSet(AuditType.STATIC_SECURITY_ANALYSIS)), SecurityReviewAuditResponse.class);
         DashboardReviewResponse expected = getExpectedReviewResponse("StaticSecurityAnalysisAudit.json", SecurityReviewAuditResponse.class);
         assertDashboardAudit(actual, expected);
         assertThat(actual.getReview()).isNotEmpty();
         assertThat(actual.getReview().get(AuditType.STATIC_SECURITY_ANALYSIS)).isNotNull();
-        Map<AuditType, Collection<LibraryPolicyAuditResponse>> actualReviewMap = actual.getReview();
-        Collection<LibraryPolicyAuditResponse> actualReview = actualReviewMap.get(AuditType.STATIC_SECURITY_ANALYSIS);
-        Map<AuditType, Collection<LibraryPolicyAuditResponse>> expectedReviewMap = expected.getReview();
-        Collection<LibraryPolicyAuditResponse> expectedReview = expectedReviewMap.get(AuditType.STATIC_SECURITY_ANALYSIS);
+        Map<AuditType, Collection<SecurityReviewAuditResponse>> actualReviewMap = actual.getReview();
+        Collection<SecurityReviewAuditResponse> actualReview = actualReviewMap.get(AuditType.STATIC_SECURITY_ANALYSIS);
+        Map<AuditType, Collection<SecurityReviewAuditResponse>> expectedReviewMap = expected.getReview();
+        Collection<SecurityReviewAuditResponse> expectedReview = expectedReviewMap.get(AuditType.STATIC_SECURITY_ANALYSIS);
         assertThat(actualReview.size()).isEqualTo(1);
-        assertThat(actualReview.toArray()[0]).isEqualToComparingFieldByField(expectedReview.toArray()[0]);
+        Assert.assertEquals(actualReviewMap.get("codeQuality"), expectedReviewMap.get("codeQuality"));
+        Assert.assertEquals(actualReviewMap.get("lastExecutionTime"), expectedReviewMap.get("lastExecutionTime"));
+        Assert.assertEquals(actualReviewMap.get("auditEntity"), expectedReviewMap.get("auditEntity"));
+        Assert.assertEquals(actualReviewMap.get("lastUpdated"), expectedReviewMap.get("lastUpdated"));
+        Assert.assertEquals(actualReviewMap.get("auditStatuses"), expectedReviewMap.get("auditStatuses"));
     }
 
     @Test
     public void runLibraryPolicyAuditTests() throws AuditException, IOException {
+        libraryPolicyResultsRepository.deleteAll();
+        TestUtils.loadLibraryPolicy(libraryPolicyResultsRepository, "./librarypolicy/librarypolicy.json");
         DashboardReviewResponse actual = getActualReviewResponse(dashboardAuditService.getDashboardReviewResponse("TestSSA",
-                                                            DashboardType.Team,
-                                                            "TestBusServ",
-                                                            "confItem",
-                                                            1522623841000L, 1526505798000L,
-                                                        Sets.newHashSet(AuditType.LIBRARY_POLICY)), LibraryPolicyAuditResponse.class);
+                DashboardType.Team,
+                "TestBusServ",
+                "confItem",
+                1522623841000L, 1526505798000L,
+                Sets.newHashSet(AuditType.LIBRARY_POLICY)), LibraryPolicyAuditResponse.class);
         DashboardReviewResponse expected = getExpectedReviewResponse("LibraryPolicyAudit.json", LibraryPolicyAuditResponse.class);
 
         assertDashboardAudit(actual, expected);
@@ -150,12 +182,146 @@ public class DashboardAuditServiceTest {
 
 
     @Test
+    public void runLibraryPolicyAuditTestsWithDispositionOk() throws AuditException, IOException {
+        libraryPolicyResultsRepository.deleteAll();
+        TestUtils.loadLibraryPolicy(libraryPolicyResultsRepository, "./librarypolicy/librarypolicy-disp-ok.json");
+        DashboardReviewResponse actual = getActualReviewResponse(dashboardAuditService.getDashboardReviewResponse("TestSSA",
+                DashboardType.Team,
+                "TestBusServ",
+                "confItem",
+                1522623841000L, 1526505798000L,
+                Sets.newHashSet(AuditType.LIBRARY_POLICY)), LibraryPolicyAuditResponse.class);
+        DashboardReviewResponse expected = getExpectedReviewResponse("LibraryPolicyAuditWithDisposition-ok.json", LibraryPolicyAuditResponse.class);
+
+        assertDashboardAudit(actual, expected);
+        assertThat(actual.getReview()).isNotEmpty();
+        assertThat(actual.getReview().get(AuditType.LIBRARY_POLICY)).isNotNull();
+        Map<AuditType, Collection<LibraryPolicyAuditResponse>> actualReviewMap = actual.getReview();
+        Collection<LibraryPolicyAuditResponse> actualReview = actualReviewMap.get(AuditType.LIBRARY_POLICY);
+        Map<AuditType, Collection<LibraryPolicyAuditResponse>> expectedReviewMap = expected.getReview();
+        Collection<LibraryPolicyAuditResponse> expectedReview = expectedReviewMap.get(AuditType.LIBRARY_POLICY);
+        assertThat(actualReview.size()).isEqualTo(1);
+        assertThat(actualReview.toArray()[0]).isEqualToComparingFieldByField(expectedReview.toArray()[0]);
+    }
+
+    @Test
+    public void runLibraryPolicyAuditTestsWithDispositionFail() throws AuditException, IOException {
+        libraryPolicyResultsRepository.deleteAll();
+        TestUtils.loadLibraryPolicy(libraryPolicyResultsRepository, "./librarypolicy/librarypolicy-disp-fail.json");
+        DashboardReviewResponse actual = getActualReviewResponse(dashboardAuditService.getDashboardReviewResponse("TestSSA",
+                DashboardType.Team,
+                "TestBusServ",
+                "confItem",
+                1522623841000L, 1526505798000L,
+                Sets.newHashSet(AuditType.LIBRARY_POLICY)), LibraryPolicyAuditResponse.class);
+        DashboardReviewResponse expected = getExpectedReviewResponse("LibraryPolicyAuditWithDisposition-fail.json", LibraryPolicyAuditResponse.class);
+
+        assertDashboardAudit(actual, expected);
+        assertThat(actual.getReview()).isNotEmpty();
+        assertThat(actual.getReview().get(AuditType.LIBRARY_POLICY)).isNotNull();
+        Map<AuditType, Collection<LibraryPolicyAuditResponse>> actualReviewMap = actual.getReview();
+        Collection<LibraryPolicyAuditResponse> actualReview = actualReviewMap.get(AuditType.LIBRARY_POLICY);
+        Map<AuditType, Collection<LibraryPolicyAuditResponse>> expectedReviewMap = expected.getReview();
+        Collection<LibraryPolicyAuditResponse> expectedReview = expectedReviewMap.get(AuditType.LIBRARY_POLICY);
+        assertThat(actualReview.size()).isEqualTo(1);
+        assertThat(actualReview.toArray()[0]).isEqualToComparingFieldByField(expectedReview.toArray()[0]);
+    }
+
+    @Test
+    public void runPerformanceAuditTests() throws AuditException, IOException {
+        DashboardReviewResponse actual = getActualReviewResponse(dashboardAuditService.getDashboardReviewResponse("TestSSA",
+                DashboardType.Team,
+                "TestBusServ",
+                "confItem",
+                1522623841000L, 1526505798000L,
+                Sets.newHashSet(AuditType.PERF_TEST)), PerformanceTestAuditResponse.class);
+        DashboardReviewResponse expected = getExpectedReviewResponse("Performance.json", PerformanceTestAuditResponse.class);
+        assertDashboardAudit(actual, expected);
+        assertThat(actual.getReview()).isNotEmpty();
+        assertThat(actual.getReview().get(AuditType.PERF_TEST)).isNotNull();
+        Map<AuditType, Collection<PerformanceTestAuditResponse>> actualReviewMap = actual.getReview();
+        Collection<PerformanceTestAuditResponse> actualReview = actualReviewMap.get(AuditType.PERF_TEST);
+        Map<AuditType, Collection<PerformanceTestAuditResponse>> expectedReviewMap = expected.getReview();
+        Collection<PerformanceTestAuditResponse> expectedReview = expectedReviewMap.get(AuditType.PERF_TEST);
+        assertThat(actualReview.size()).isEqualTo(1);
+        assertThat(actualReview.toArray()[0]).isEqualToComparingFieldByField(expectedReview.toArray()[0]);
+    }
+
+       @Test
+    public void runCodeQualityAuditTests() throws AuditException, IOException {
+        DashboardReviewResponse actual = getActualReviewResponse(dashboardAuditService.getDashboardReviewResponse("TestSSA",
+                DashboardType.Team,
+                "TestBusServ",
+                "confItem",
+                1473860406000L, 1478983206000L,
+                Sets.newHashSet(AuditType.CODE_QUALITY)), CodeQualityAuditResponse.class);
+        DashboardReviewResponse expected = getExpectedReviewResponse("CodeQuality.json", CodeQualityAuditResponse.class);
+
+        assertDashboardAudit(actual, expected);
+        assertThat(actual.getReview()).isNotEmpty();
+        assertThat(actual.getReview().get(AuditType.CODE_QUALITY)).isNotNull();
+        Map<AuditType, Collection<CodeQualityAuditResponse>> actualReviewMap = actual.getReview();
+        Collection<CodeQualityAuditResponse> actualReview = actualReviewMap.get(AuditType.CODE_QUALITY);
+        Map<AuditType, Collection<CodeQualityAuditResponse>> expectedReviewMap = expected.getReview();
+        Collection<CodeQualityAuditResponse> expectedReview = expectedReviewMap.get(AuditType.CODE_QUALITY);
+        assertThat(actualReview.size()).isEqualTo(1);
+        assertThat(actualReview.toArray()[0]).isEqualToComparingFieldByField(expectedReview.toArray()[0]);
+    }
+
+    @Test
+    public void runArtifactAuditTests() throws AuditException, IOException {
+        DashboardReviewResponse actual = getActualReviewResponse(dashboardAuditService.getDashboardReviewResponse("TestSSA",
+                DashboardType.Team,
+                "TestBusServ",
+                "confItem",
+                1554140676000L, 1554831876000L,
+                Sets.newHashSet(AuditType.ARTIFACT)), ArtifactAuditResponse.class);
+        DashboardReviewResponse expected = getExpectedReviewResponse("Artifact.json", ArtifactAuditResponse.class);
+
+        assertThat(actual.getReview()).isNotEmpty();
+        assertThat(actual.getReview().get(AuditType.ARTIFACT)).isNotNull();
+        Map<AuditType, Collection<CodeQualityAuditResponse>> actualReviewMap = actual.getReview();
+        Collection<CodeQualityAuditResponse> actualReview = actualReviewMap.get(AuditType.ARTIFACT);
+        Map<AuditType, Collection<CodeQualityAuditResponse>> expectedReviewMap = expected.getReview();
+        Collection<CodeQualityAuditResponse> expectedReview = expectedReviewMap.get(AuditType.ARTIFACT);
+        assertThat(actualReview.size()).isEqualTo(1);
+        }
+
+
+    @Test
+    public void runTestResultsAuditTests() throws AuditException, IOException {
+        DashboardReviewResponse actual = getActualReviewResponse(dashboardAuditService.getDashboardReviewResponse("TestSSA",
+                DashboardType.Team,
+                "TestBusServ",
+                "confItem",
+                1473885606000L, 1478983206000L,
+                Sets.newHashSet(AuditType.TEST_RESULT)), TestResultsAuditResponse.class);
+        DashboardReviewResponse expected = getExpectedReviewResponse("TestResults.json", TestResultsAuditResponse.class);
+        assertDashboardAudit(actual, expected);
+        assertThat(actual.getReview()).isNotEmpty();
+        assertThat(actual.getReview().get(AuditType.TEST_RESULT)).isNotNull();
+        Map<AuditType, Collection<TestResultsAuditResponse>> actualReviewMap = actual.getReview();
+        Collection<TestResultsAuditResponse> actualReview = actualReviewMap.get(AuditType.TEST_RESULT);
+        Map<AuditType, Collection<TestResultsAuditResponse>> expectedReviewMap = expected.getReview();
+        Collection<TestResultsAuditResponse> expectedReview = expectedReviewMap.get(AuditType.TEST_RESULT);
+        assertThat(actualReview.size()).isEqualTo(1);
+        //assertThat((actualReview.toArray()[0])).isEqualToComparingFieldByField(expectedReview.toArray()[0]);
+    }
+
+
+
+
+    @Test
     public void runLegacyCodeReviewTests() throws AuditException, IOException {
         for (CollectorItem item : collectorItemRepository.findAll()) {
             Collector collector = collectorRepository.findOne(item.getCollectorId());
             if ((collector != null) && (collector.getCollectorType() == CollectorType.SCM)) {
                 String url = (String) item.getOptions().get("url");
                 String branch = (String) item.getOptions().get("branch");
+                //This is for a different test. Skip it for this.
+                if ("https://mygithub.com/TechOriginations/openupf".equalsIgnoreCase(url)) {
+                    continue;
+                }
                 List<CodeReviewAuditResponse> actual = (List<CodeReviewAuditResponse>) codeReviewAuditService.getPeerReviewResponses(url, branch, "GitHub", 0L, System.currentTimeMillis());
                 List<CodeReviewAuditResponse> expected = (List<CodeReviewAuditResponse>) getExpectedCodeReviewResponse(url);
                 assertThat(actual.size()).isEqualByComparingTo(expected.size());
@@ -193,6 +359,45 @@ public class DashboardAuditServiceTest {
         }
     }
 
+
+    @Test
+    public void runLegacyCodeReviewTestSpecialDateRange() throws AuditException, IOException {
+                String url = "https://mygithub.com/Devopscode/NewPrOldCommit";
+                String branch = "master";
+                List<CodeReviewAuditResponse> actual = (List<CodeReviewAuditResponse>) codeReviewAuditService.getPeerReviewResponses(url, branch, "GitHub", 1535502925000L, 1535675725000L);
+                List<CodeReviewAuditResponse> expected = (List<CodeReviewAuditResponse>) getExpectedCodeReviewResponse("https://mygithub.com/Devopscode/NewPrOldCommitSpecialDateRange");
+                assertThat(actual.size()).isEqualByComparingTo(expected.size());
+                IntStream.range(0, actual.size()).forEach(i -> {
+                    CodeReviewAuditResponse lhs = actual.get(i);
+                    CodeReviewAuditResponse rhs = expected.get(i);
+                    List<Commit> lhsCommits = lhs.getCommits();
+                    List<Commit> rhsCommits = rhs.getCommits();
+                    GitRequest lhsPR = lhs.getPullRequest();
+                    GitRequest rhsPR = rhs.getPullRequest();
+                    assertThat(lhs).isEqualToComparingOnlyGivenFields(rhs, "scmUrl", "scmBranch", "auditStatuses");
+                    boolean bothNull = (lhsPR == null) && (rhsPR == null);
+                    if (!bothNull) {
+                        assertThat(lhsPR).isEqualToComparingOnlyGivenFields(rhsPR, "scmUrl", "scmBranch", "number", "orgName", "repoName", "scmMergeEventRevisionNumber",
+                                "scmCommitLog", "scmCommitTimestamp", "scmAuthor", "numberOfChanges", "sourceRepo", "sourceBranch", "targetRepo", "targetBranch", "updatedAt", "createdAt",
+                                "closedAt", "state", "mergedAt", "headSha", "baseSha");
+
+                        List<Commit> lhsPRCommits = Objects.requireNonNull(lhsPR).getCommits();
+                        List<Commit> rhsPRCommits = rhsPR.getCommits();
+                        compareCommits(lhsPRCommits, rhsPRCommits);
+
+                        List<Review> lhsPRReviews = lhsPR.getReviews();
+                        List<Review> rhsPRReviews = rhsPR.getReviews();
+                        compareReviews(lhsPRReviews, rhsPRReviews);
+
+                        List<Comment> lhsPRComments = lhsPR.getComments();
+                        List<Comment> rhsPRComments = rhsPR.getComments();
+                        compareComments(lhsPRComments, rhsPRComments);
+                    }
+                    compareCommits(lhsCommits, rhsCommits);
+
+                });
+    }
+
     private void compareComments(List<Comment> lhsPRComments, List<Comment> rhsPRComments) {
         assertThat(CollectionUtils.isEmpty(lhsPRComments) ? 0 : lhsPRComments.size()).isEqualTo(CollectionUtils.isEmpty(rhsPRComments) ? 0 : rhsPRComments.size());
         lhsPRComments.sort(Comparator.comparing(Comment::getCreatedAt));
@@ -204,6 +409,7 @@ public class DashboardAuditServiceTest {
         assertThat(CollectionUtils.isEmpty(lhsPRReviews) ? 0 : lhsPRReviews.size()).isEqualTo(CollectionUtils.isEmpty(rhsPRReviews) ? 0 : rhsPRReviews.size());
         lhsPRReviews.sort(Comparator.comparing(Review::getCreatedAt));
         rhsPRReviews.sort(Comparator.comparing(Review::getCreatedAt));
+
         IntStream.range(0, lhsPRReviews.size()).forEach(i -> assertThat(lhsPRReviews.get(i)).isEqualToComparingFieldByField(rhsPRReviews.get(i)));
     }
 
