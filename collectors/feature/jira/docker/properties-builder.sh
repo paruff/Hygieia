@@ -97,6 +97,8 @@ feature.masterStartDate=${JIRA_MASTER_START_DATE:-2008-01-01T00:00:00.000000}
 # listings via the following URI:  https://[your-jira-domain-name]/rest/api/2/issuetype/
 # Multiple comma-separated values can be specified.
 feature.jiraIssueTypeNames=${JIRA_ISSUE_TYPE_NAMES:-Story}
+feature.jiraStoryIds=${JIRA_STORY_IDS:-7,8}
+feature.jiraEpicId=${JIRA_EPIC_ID:-6}
 
 # In Jira, your instance will have its own custom field created for "sprint" or "timebox" details,
 # which includes a list of information.  This field allows you to specify that data field for your
@@ -132,6 +134,10 @@ feature.jiraTeamFieldName=${JIRA_TEAM_FIELD_NAME}
 
 # Set this to true if you use boards as team
 feature.jiraBoardAsTeam=${JIRA_BOARD_AS_TEAM:-false}
+
+feature.todoStatuses=${JIRA_TODO_STATUSES}
+feature.doingStatuses=${JIRA_DOING_STATUSES}
+feature.doneStatuses=${JIRA_DONE_STATUSES}
 
 EOF
 

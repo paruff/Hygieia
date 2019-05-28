@@ -1,17 +1,19 @@
-FROM openjdk:8-jre
 
-VOLUME ["/hygieia/logs"]
+FROM docker.io/openjdk:8-jre
 
-RUN mkdir /hygieia/config
+MAINTAINER Hygieia@capitalone.com
 
-EXPOSE 8080
+RUN mkdir /hygieia /hygieia/config
 
-ENV PROP_FILE /hygieia/config/application.properties
+COPY target/*.jar /hygieia/
+COPY docker/properties-builder.sh /hygieia/
 
 WORKDIR /hygieia
 
-COPY target/*.jar /hygieia
-COPY docker/properties-builder.sh /hygieia/
+VOLUME ["/hygieia/logs"]
 
-CMD ./properties-builder.sh &&\
-  java -Djava.security.egd=file:/dev/./urandom -jar *.jar --spring.config.location=$PROP_FILE
+ENV PROP_FILE /hygieia/config/application.properties
+
+CMD ./properties-builder.sh && \
+  java -jar jenkins-build-collector*.jar --spring.config.location=$PROP_FILE
+
