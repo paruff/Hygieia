@@ -62,6 +62,11 @@ volumes: [
             docker build -t ${regNamespace}/hygieia-jira-feature-collector .
             docker tag ${regNamespace}/hygieia-jira-feature-collector ${regNamespace}/hygieia-jira-feature-collector:3.0.2.${BUILD_NUMBER}
             docker push ${regNamespace}/hygieia-jira-feature-collector
+        cd ../..
+        cd scm/gitlab
+            docker build -t ${regNamespace}/hygieia-gitlab-scm-collector .
+            docker tag ${regNamespace}/hygieia-gitlab-scm-collector ${regNamespace}/hygieia-gitlab-scm-collector:3.0.2.${BUILD_NUMBER}
+            docker push ${regNamespace}/hygieia-gitlab-scm-collector
             """
          }
       }
