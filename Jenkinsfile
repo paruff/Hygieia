@@ -72,6 +72,11 @@ volumes: [
             docker build -t ${regNamespace}/hygieia-sonar-codequality-collector .
             docker tag ${regNamespace}/hygieia-sonar-codequality-collector ${regNamespace}/hygieia-sonar-codequality-collector:3.0.2.${BUILD_NUMBER}
             docker push ${regNamespace}/hygieia-sonar-codequality-collector
+        cd ../..
+        cd misc/score
+            docker build -t ${regNamespace}/hygieia-score-collector .
+            docker tag ${regNamespace}/hygieia-score-collector ${regNamespace}/hygieia-score-collector:3.0.2.${BUILD_NUMBER}
+            docker push ${regNamespace}/hygieia-score-collector
             """
          }
       }
