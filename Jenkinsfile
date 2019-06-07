@@ -67,6 +67,11 @@ volumes: [
             docker build -t ${regNamespace}/hygieia-gitlab-scm-collector .
             docker tag ${regNamespace}/hygieia-gitlab-scm-collector ${regNamespace}/hygieia-gitlab-scm-collector:3.0.2.${BUILD_NUMBER}
             docker push ${regNamespace}/hygieia-gitlab-scm-collector
+        cd ../..
+        cd build/sonar
+            docker build -t ${regNamespace}/hygieia-sonar-codequality-collector .
+            docker tag ${regNamespace}/hygieia-sonar-codequality-collector ${regNamespace}/hygieia-sonar-codequality-collector:3.0.2.${BUILD_NUMBER}
+            docker push ${regNamespace}/hygieia-sonar-codequality-collector
             """
          }
       }
