@@ -59,9 +59,9 @@ volumes: [
             docker push ${regNamespace}/hygieia-ui
         cd ..
         cd collectors/feature/jira
-            docker build -t ${regNamespace}/hygieia-ui .
-            docker tag ${regNamespace}/hygieia-ui ${regNamespace}/hygieia-jira-feature-collector:3.0.2.${BUILD_NUMBER}
-            docker push ${regNamespace}/hygieia-ui
+            docker build -t ${regNamespace}/hygieia-jira-feature-collector .
+            docker tag ${regNamespace}/hygieia-jira-feature-collector ${regNamespace}/hygieia-jira-feature-collector:3.0.2.${BUILD_NUMBER}
+            docker push ${regNamespace}/hygieia-jira-feature-collector
             """
          }
       }
