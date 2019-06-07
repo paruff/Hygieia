@@ -77,6 +77,11 @@ volumes: [
             docker build -t ${regNamespace}/hygieia-score-collector .
             docker tag ${regNamespace}/hygieia-score-collector ${regNamespace}/hygieia-score-collector:3.0.2.${BUILD_NUMBER}
             docker push ${regNamespace}/hygieia-score-collector
+         cd ../..
+         cd build/jenkins
+            docker build -t ${regNamespace}/hygieia-jenkins-collector .
+            docker tag ${regNamespace}/hygieia-jenkins-collector ${regNamespace}/hygieia-jenkins-collector:3.0.2.${BUILD_NUMBER}
+            docker push ${regNamespace}/hygieia-jenkins-collector
             """
          }
       }
