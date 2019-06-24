@@ -33,7 +33,7 @@ volumes: [
                 }
                 
                 stage('install hygieia') {
-                    git url: 'https://github.com/paruff/Hygieia.git'
+                    git url: 'https://github.com/paruff/Hygieia.git', branch: 'develop'
                     sh 'mvn -B  clean install' 
                 }
                 
