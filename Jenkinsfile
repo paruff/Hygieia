@@ -48,6 +48,7 @@ volumes: [
           sh """
             echo $branchName          
             docker login -u ${DOCKER_REG_USER}  -p ${DOCKER_REG_PASSWORD}
+            docker system prune -f
         cd api
             docker build -t ${regNamespace}/hygieia-api .
             docker tag ${regNamespace}/hygieia-api ${regNamespace}/hygieia-api:3.0.2.${BUILD_NUMBER}
