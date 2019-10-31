@@ -37,11 +37,6 @@ volumes: [
                     sh 'mvn -B  clean install' 
                 }
                 
-                stage('build hygieia') {
-                    git url: 'https://github.com/paruff/Hygieia.git', branch: 'develop'
-                    sh 'mvn -B  clean install' 
-                }
-                
             }
         }
         stage('Create Docker images') {
@@ -83,13 +78,6 @@ volumes: [
             docker build -t ${regNamespace}/hygieia-jenkins-build-collector .
             docker tag ${regNamespace}/hygieia-jenkins-build-collector ${regNamespace}/hygieia-jenkins-build-collector:3.0.2.${BUILD_NUMBER}
             docker push ${regNamespace}/hygieia-jenkins-build-collector
-         cd ../..
-         cd api
-            docker build -t ${regNamespace}/hygieia-api .
-            docker tag ${regNamespace}/hygieia-api ${regNamespace}/hygieia-api:3.0.2.${BUILD_NUMBER}
-            docker push ${regNamespace}/hygieia-api
-        cd ..
-
             """
          }
       }
