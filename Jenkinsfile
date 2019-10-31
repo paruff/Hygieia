@@ -54,11 +54,6 @@ volumes: [
             docker tag ${regNamespace}/hygieia-ui ${regNamespace}/hygieia-ui:3.0.2.${BUILD_NUMBER}
             docker push ${regNamespace}/hygieia-ui
         cd ..
-        cd collectors/feature/jira
-            docker build -t ${regNamespace}/hygieia-jira-feature-collector .
-            docker tag ${regNamespace}/hygieia-jira-feature-collector ${regNamespace}/hygieia-jira-feature-collector:3.0.2.${BUILD_NUMBER}
-            docker push ${regNamespace}/hygieia-jira-feature-collector
-        cd ../..
         cd scm/gitlab
             docker build -t ${regNamespace}/hygieia-gitlab-scm-collector .
             docker tag ${regNamespace}/hygieia-gitlab-scm-collector ${regNamespace}/hygieia-gitlab-scm-collector:3.0.2.${BUILD_NUMBER}
@@ -78,6 +73,12 @@ volumes: [
             docker build -t ${regNamespace}/hygieia-jenkins-build-collector .
             docker tag ${regNamespace}/hygieia-jenkins-build-collector ${regNamespace}/hygieia-jenkins-build-collector:3.0.2.${BUILD_NUMBER}
             docker push ${regNamespace}/hygieia-jenkins-build-collector
+         cd ../..
+         cd collectors/feature/jira
+            docker build -t ${regNamespace}/hygieia-jira-feature-collector .
+            docker tag ${regNamespace}/hygieia-jira-feature-collector ${regNamespace}/hygieia-jira-feature-collector:3.0.2.${BUILD_NUMBER}
+            docker push ${regNamespace}/hygieia-jira-feature-collector
+        cd ../..
             """
          }
       }
