@@ -32,7 +32,12 @@ volumes: [
                     sh 'mvn -B  clean install' 
                 }
                 
-                stage('install hygieia') {
+                stage('build hygieia') {
+                    git url: 'https://github.com/paruff/Hygieia.git', branch: 'develop'
+                    sh 'mvn -B  clean install' 
+                }
+                
+                stage('build hygieia') {
                     git url: 'https://github.com/paruff/Hygieia.git', branch: 'develop'
                     sh 'mvn -B  clean install' 
                 }
@@ -49,11 +54,6 @@ volumes: [
             echo $branchName          
             docker login -u ${DOCKER_REG_USER}  -p ${DOCKER_REG_PASSWORD}
             docker system prune -f
-        cd api
-            docker build -t ${regNamespace}/hygieia-api .
-            docker tag ${regNamespace}/hygieia-api ${regNamespace}/hygieia-api:3.0.2.${BUILD_NUMBER}
-            docker push ${regNamespace}/hygieia-api
-        cd ..
         cd UI
             docker build -t ${regNamespace}/hygieia-ui .
             docker tag ${regNamespace}/hygieia-ui ${regNamespace}/hygieia-ui:3.0.2.${BUILD_NUMBER}
@@ -83,6 +83,13 @@ volumes: [
             docker build -t ${regNamespace}/hygieia-jenkins-build-collector .
             docker tag ${regNamespace}/hygieia-jenkins-build-collector ${regNamespace}/hygieia-jenkins-build-collector:3.0.2.${BUILD_NUMBER}
             docker push ${regNamespace}/hygieia-jenkins-build-collector
+         cd ../..
+         cd api
+            docker build -t ${regNamespace}/hygieia-api .
+            docker tag ${regNamespace}/hygieia-api ${regNamespace}/hygieia-api:3.0.2.${BUILD_NUMBER}
+            docker push ${regNamespace}/hygieia-api
+        cd ..
+
             """
          }
       }
